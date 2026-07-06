@@ -30,3 +30,21 @@ pub enum ClipKind {
     Code,
     Link,
 }
+
+impl ClipKind {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Text => "text",
+            Self::Code => "code",
+            Self::Link => "link",
+        }
+    }
+
+    pub fn from_str(value: &str) -> Self {
+        match value {
+            "code" => Self::Code,
+            "link" => Self::Link,
+            _ => Self::Text,
+        }
+    }
+}
