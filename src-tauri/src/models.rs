@@ -17,8 +17,15 @@ pub struct Clip {
     pub folder_id: String,
     pub title: String,
     pub content: String,
+    pub content_hash: String,
     pub source: String,
+    pub source_app: Option<String>,
     pub time: String,
+    pub created_at: String,
+    pub updated_at: String,
+    pub last_used_at: Option<String>,
+    pub mime_type: String,
+    pub deleted_at: Option<String>,
     pub pinned: bool,
     pub kind: ClipKind,
 }
@@ -56,5 +63,7 @@ pub struct CreateClipPayload {
     pub title: String,
     pub content: String,
     pub source: String,
+    pub source_app: Option<String>,
+    pub mime_type: Option<String>,
     pub kind: ClipKind,
 }

@@ -38,6 +38,8 @@ pub fn capture_clipboard_text(
             title: title_from_clipboard_text(trimmed_text),
             content: trimmed_text.into(),
             source: "Clipboard".into(),
+            source_app: None,
+            mime_type: None,
             kind: kind_from_clipboard_text(trimmed_text),
         },
     )

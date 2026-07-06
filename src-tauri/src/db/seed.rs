@@ -2,7 +2,7 @@ use rusqlite::{params, Connection};
 
 use crate::models::ClipKind;
 
-use super::DbResult;
+use super::{content, DbResult};
 
 struct SeedFolder {
     id: &'static str,
@@ -54,16 +54,34 @@ pub fn ensure(conn: &Connection) -> DbResult<()> {
     for clip in clips {
         conn.execute(
             "
-            insert into clips (id, folder_id, title, content, source, time_label, pinned, kind)
-            values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+            insert into clips (
+                id,
+                folder_id,
+                title,
+                content,
+                content_hash,
+                source,
+                source_app,
+                time_label,
+                created_at,
+                updated_at,
+                last_used_at,
+                mime_type,
+                deleted_at,
+                pinned,
+                kind
+            )
+            values (?1, ?2, ?3, ?4, ?5, ?6, null, ?7, datetime('now'), datetime('now'), null, ?8, null, ?9, ?10)
             ",
             params![
                 clip.id,
                 clip.folder_id,
                 clip.title,
                 clip.content,
+                content::content_hash(clip.content),
                 clip.source,
                 clip.time,
+                content::mime_type_for_kind(&clip.kind),
                 clip.pinned,
                 clip.kind.as_str()
             ],

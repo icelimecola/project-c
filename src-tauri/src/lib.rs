@@ -6,6 +6,11 @@ mod models;
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .setup(|app| {
+            db::init(app.handle())
+                .map_err(|error| std::io::Error::new(std::io::ErrorKind::Other, error))?;
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             commands::clips::capture_clipboard_text,
             commands::clips::create_clip,

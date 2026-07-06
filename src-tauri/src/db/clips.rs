@@ -1,9 +1,9 @@
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{params, Connection, OptionalExtension, Row};
 use tauri::AppHandle;
 
 use crate::models::{Clip, ClipKind, CreateClipPayload, Folder};
 
-use super::{connection, schema, seed, DbResult};
+use super::{connection, content, schema, seed, DbResult};
 
 pub fn list_folders(app: &AppHandle) -> DbResult<Vec<Folder>> {
     let conn = open_ready_connection(app)?;
@@ -20,6 +20,17 @@ pub fn create_clip(app: &AppHandle, payload: CreateClipPayload) -> DbResult<Clip
     let title = payload.title.trim();
     let content = payload.content.trim();
     let source = payload.source.trim();
+    let source_app = payload
+        .source_app
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let mime_type = payload
+        .mime_type
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| content::mime_type_for_kind(&payload.kind));
 
     if title.is_empty() {
         return Err("Clip title cannot be empty.".into());
@@ -39,14 +50,32 @@ pub fn create_clip(app: &AppHandle, payload: CreateClipPayload) -> DbResult<Clip
 
     conn.execute(
         "
-        insert into clips (folder_id, title, content, source, time_label, pinned, kind)
-        values (?1, ?2, ?3, ?4, 'now', 0, ?5)
+        insert into clips (
+            folder_id,
+            title,
+            content,
+            content_hash,
+            source,
+            source_app,
+            time_label,
+            created_at,
+            updated_at,
+            last_used_at,
+            mime_type,
+            deleted_at,
+            pinned,
+            kind
+        )
+        values (?1, ?2, ?3, ?4, ?5, ?6, 'now', datetime('now'), datetime('now'), null, ?7, null, 0, ?8)
         ",
         params![
             folder_id,
             title,
             content,
+            content::content_hash(content),
             if source.is_empty() { "Manual" } else { source },
+            source_app,
+            mime_type,
             payload.kind.as_str()
         ],
     )
@@ -59,7 +88,14 @@ pub fn create_clip(app: &AppHandle, payload: CreateClipPayload) -> DbResult<Clip
 pub fn delete_clip(app: &AppHandle, id: u32) -> DbResult<()> {
     let conn = open_ready_connection(app)?;
     let changed = conn
-        .execute("delete from clips where id = ?1", params![id])
+        .execute(
+            "
+            update clips
+            set deleted_at = datetime('now'), updated_at = datetime('now')
+            where id = ?1 and deleted_at is null
+            ",
+            params![id],
+        )
         .map_err(|error| format!("Failed to delete clip: {error}"))?;
 
     if changed == 0 {
@@ -75,8 +111,10 @@ pub fn toggle_clip_pinned(app: &AppHandle, id: u32) -> DbResult<Clip> {
         .execute(
             "
             update clips
-            set pinned = case pinned when 0 then 1 else 0 end
-            where id = ?1
+            set
+                pinned = case pinned when 0 then 1 else 0 end,
+                updated_at = datetime('now')
+            where id = ?1 and deleted_at is null
             ",
             params![id],
         )
@@ -106,11 +144,13 @@ fn query_folders(conn: &Connection) -> DbResult<Vec<Folder>> {
                 folders.hotkey,
                 folders.color,
                 case
-                    when folders.id = 'inbox' then (select count(*) from clips)
+                    when folders.id = 'inbox' then (
+                        select count(*) from clips where deleted_at is null
+                    )
                     else count(clips.id)
                 end as clip_count
             from folders
-            left join clips on clips.folder_id = folders.id
+            left join clips on clips.folder_id = folders.id and clips.deleted_at is null
             group by folders.id
             order by folders.sort_order asc
             ",
@@ -138,28 +178,31 @@ fn query_clips(conn: &Connection) -> DbResult<Vec<Clip>> {
     let mut stmt = conn
         .prepare(
             "
-            select id, folder_id, title, content, source, time_label, pinned, kind
+            select
+                id,
+                folder_id,
+                title,
+                content,
+                content_hash,
+                source,
+                source_app,
+                time_label,
+                created_at,
+                updated_at,
+                last_used_at,
+                mime_type,
+                deleted_at,
+                pinned,
+                kind
             from clips
-            order by pinned desc, id desc
+            where deleted_at is null
+            order by pinned desc, datetime(created_at) desc, id desc
             ",
         )
         .map_err(|error| format!("Failed to prepare clip query: {error}"))?;
 
     let clips = stmt
-        .query_map([], |row| {
-            let kind: String = row.get(7)?;
-
-            Ok(Clip {
-                id: row.get::<_, i64>(0)? as u32,
-                folder_id: row.get(1)?,
-                title: row.get(2)?,
-                content: row.get(3)?,
-                source: row.get(4)?,
-                time: row.get(5)?,
-                pinned: row.get(6)?,
-                kind: ClipKind::from_str(&kind),
-            })
-        })
+        .query_map([], |row| row_to_clip(row))
         .map_err(|error| format!("Failed to query clips: {error}"))?;
 
     collect_rows(clips, "clip")
@@ -168,29 +211,53 @@ fn query_clips(conn: &Connection) -> DbResult<Vec<Clip>> {
 fn query_clip_by_id(conn: &Connection, id: u32) -> DbResult<Clip> {
     conn.query_row(
         "
-        select id, folder_id, title, content, source, time_label, pinned, kind
+        select
+            id,
+            folder_id,
+            title,
+            content,
+            content_hash,
+            source,
+            source_app,
+            time_label,
+            created_at,
+            updated_at,
+            last_used_at,
+            mime_type,
+            deleted_at,
+            pinned,
+            kind
         from clips
-        where id = ?1
+        where id = ?1 and deleted_at is null
         ",
         params![id],
-        |row| {
-            let kind: String = row.get(7)?;
-
-            Ok(Clip {
-                id: row.get::<_, i64>(0)? as u32,
-                folder_id: row.get(1)?,
-                title: row.get(2)?,
-                content: row.get(3)?,
-                source: row.get(4)?,
-                time: row.get(5)?,
-                pinned: row.get(6)?,
-                kind: ClipKind::from_str(&kind),
-            })
-        },
+        row_to_clip,
     )
     .optional()
     .map_err(|error| format!("Failed to query clip {id}: {error}"))?
     .ok_or_else(|| format!("Clip {id} was not found."))
+}
+
+fn row_to_clip(row: &Row<'_>) -> rusqlite::Result<Clip> {
+    let kind: String = row.get(14)?;
+
+    Ok(Clip {
+        id: row.get::<_, i64>(0)? as u32,
+        folder_id: row.get(1)?,
+        title: row.get(2)?,
+        content: row.get(3)?,
+        content_hash: row.get(4)?,
+        source: row.get(5)?,
+        source_app: row.get(6)?,
+        time: row.get(7)?,
+        created_at: row.get(8)?,
+        updated_at: row.get(9)?,
+        last_used_at: row.get(10)?,
+        mime_type: row.get(11)?,
+        deleted_at: row.get(12)?,
+        pinned: row.get(13)?,
+        kind: ClipKind::from_str(&kind),
+    })
 }
 
 fn ensure_folder_exists(conn: &Connection, folder_id: &str) -> DbResult<()> {

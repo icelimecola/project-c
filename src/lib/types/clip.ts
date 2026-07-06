@@ -13,8 +13,15 @@ export type Clip = {
   folderId: string;
   title: string;
   content: string;
+  contentHash: string;
   source: string;
+  sourceApp?: string | null;
   time: string;
+  createdAt: string;
+  updatedAt: string;
+  lastUsedAt?: string | null;
+  mimeType: string;
+  deletedAt?: string | null;
   pinned: boolean;
   kind: ClipKind;
 };
