@@ -1,7 +1,14 @@
-# Tauri + SvelteKit + TypeScript
+# Project C
 
-This template should help get you started developing with Tauri, SvelteKit and TypeScript in Vite.
+A Windows-first, keyboard-focused clipboard manager built around fast folders, search, and local-first storage.
 
-## Recommended IDE Setup
+Project C is currently an early-stage Tauri app prototype using SvelteKit, TypeScript, Rust, and SQLite-oriented architecture.
 
-[VS Code](https://code.visualstudio.com/) + [Svelte](https://marketplace.visualstudio.com/items?itemName=svelte.svelte-vscode) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer).
+## Development
+
+```bash
+pnpm install
+pnpm tauri dev
+```
+
+The first usable milestone is a mock clipboard workspace UI with folders, search, keyboard navigation, and pinned clips.

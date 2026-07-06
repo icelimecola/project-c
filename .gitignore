@@ -1,11 +1,36 @@
-.DS_Store
-node_modules
+# Dependencies and package-manager cache
+node_modules/
 .pnpm-store/
-/build
-/.svelte-kit
-/package
+
+# Frontend build output
+/build/
+/dist/
+/package/
+/.svelte-kit/
+
+# Tauri / Rust build output
+/target/
+src-tauri/target/
+src-tauri/gen/schemas/
+
+# Environment and local config
 .env
 .env.*
 !.env.example
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS / editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Vite temporary files
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
