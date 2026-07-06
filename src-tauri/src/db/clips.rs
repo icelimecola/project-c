@@ -1,7 +1,7 @@
-use rusqlite::Connection;
+use rusqlite::{params, Connection, OptionalExtension};
 use tauri::AppHandle;
 
-use crate::models::{Clip, ClipKind, Folder};
+use crate::models::{Clip, ClipKind, CreateClipPayload, Folder};
 
 use super::{connection, schema, seed, DbResult};
 
@@ -13,6 +13,80 @@ pub fn list_folders(app: &AppHandle) -> DbResult<Vec<Folder>> {
 pub fn list_clips(app: &AppHandle) -> DbResult<Vec<Clip>> {
     let conn = open_ready_connection(app)?;
     query_clips(&conn)
+}
+
+pub fn create_clip(app: &AppHandle, payload: CreateClipPayload) -> DbResult<Clip> {
+    let conn = open_ready_connection(app)?;
+    let title = payload.title.trim();
+    let content = payload.content.trim();
+    let source = payload.source.trim();
+
+    if title.is_empty() {
+        return Err("Clip title cannot be empty.".into());
+    }
+
+    if content.is_empty() {
+        return Err("Clip content cannot be empty.".into());
+    }
+
+    let folder_id = if payload.folder_id.trim().is_empty() {
+        "inbox"
+    } else {
+        payload.folder_id.trim()
+    };
+
+    ensure_folder_exists(&conn, folder_id)?;
+
+    conn.execute(
+        "
+        insert into clips (folder_id, title, content, source, time_label, pinned, kind)
+        values (?1, ?2, ?3, ?4, 'now', 0, ?5)
+        ",
+        params![
+            folder_id,
+            title,
+            content,
+            if source.is_empty() { "Manual" } else { source },
+            payload.kind.as_str()
+        ],
+    )
+    .map_err(|error| format!("Failed to create clip: {error}"))?;
+
+    let id = conn.last_insert_rowid() as u32;
+    query_clip_by_id(&conn, id)
+}
+
+pub fn delete_clip(app: &AppHandle, id: u32) -> DbResult<()> {
+    let conn = open_ready_connection(app)?;
+    let changed = conn
+        .execute("delete from clips where id = ?1", params![id])
+        .map_err(|error| format!("Failed to delete clip: {error}"))?;
+
+    if changed == 0 {
+        return Err(format!("Clip {id} was not found."));
+    }
+
+    Ok(())
+}
+
+pub fn toggle_clip_pinned(app: &AppHandle, id: u32) -> DbResult<Clip> {
+    let conn = open_ready_connection(app)?;
+    let changed = conn
+        .execute(
+            "
+            update clips
+            set pinned = case pinned when 0 then 1 else 0 end
+            where id = ?1
+            ",
+            params![id],
+        )
+        .map_err(|error| format!("Failed to toggle clip pin: {error}"))?;
+
+    if changed == 0 {
+        return Err(format!("Clip {id} was not found."));
+    }
+
+    query_clip_by_id(&conn, id)
 }
 
 fn open_ready_connection(app: &AppHandle) -> DbResult<Connection> {
@@ -66,7 +140,7 @@ fn query_clips(conn: &Connection) -> DbResult<Vec<Clip>> {
             "
             select id, folder_id, title, content, source, time_label, pinned, kind
             from clips
-            order by pinned desc, id asc
+            order by pinned desc, id desc
             ",
         )
         .map_err(|error| format!("Failed to prepare clip query: {error}"))?;
@@ -89,6 +163,50 @@ fn query_clips(conn: &Connection) -> DbResult<Vec<Clip>> {
         .map_err(|error| format!("Failed to query clips: {error}"))?;
 
     collect_rows(clips, "clip")
+}
+
+fn query_clip_by_id(conn: &Connection, id: u32) -> DbResult<Clip> {
+    conn.query_row(
+        "
+        select id, folder_id, title, content, source, time_label, pinned, kind
+        from clips
+        where id = ?1
+        ",
+        params![id],
+        |row| {
+            let kind: String = row.get(7)?;
+
+            Ok(Clip {
+                id: row.get::<_, i64>(0)? as u32,
+                folder_id: row.get(1)?,
+                title: row.get(2)?,
+                content: row.get(3)?,
+                source: row.get(4)?,
+                time: row.get(5)?,
+                pinned: row.get(6)?,
+                kind: ClipKind::from_str(&kind),
+            })
+        },
+    )
+    .optional()
+    .map_err(|error| format!("Failed to query clip {id}: {error}"))?
+    .ok_or_else(|| format!("Clip {id} was not found."))
+}
+
+fn ensure_folder_exists(conn: &Connection, folder_id: &str) -> DbResult<()> {
+    let exists = conn
+        .query_row(
+            "select exists(select 1 from folders where id = ?1)",
+            params![folder_id],
+            |row| row.get::<_, bool>(0),
+        )
+        .map_err(|error| format!("Failed to validate folder: {error}"))?;
+
+    if exists {
+        Ok(())
+    } else {
+        Err(format!("Folder '{folder_id}' was not found."))
+    }
 }
 
 fn collect_rows<T>(

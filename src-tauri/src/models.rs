@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -23,7 +23,7 @@ pub struct Clip {
     pub kind: ClipKind,
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ClipKind {
     Text,
@@ -47,4 +47,14 @@ impl ClipKind {
             _ => Self::Text,
         }
     }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateClipPayload {
+    pub folder_id: String,
+    pub title: String,
+    pub content: String,
+    pub source: String,
+    pub kind: ClipKind,
 }

@@ -1,11 +1,20 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
   import { onMount } from "svelte";
+  import AddClipPanel from "$lib/components/AddClipPanel.svelte";
   import ClipList from "$lib/components/ClipList.svelte";
   import ClipPreview from "$lib/components/ClipPreview.svelte";
   import SearchToolbar from "$lib/components/SearchToolbar.svelte";
   import Sidebar from "$lib/components/Sidebar.svelte";
-  import type { Clip, Folder } from "$lib/types/clip";
+  import type { Clip, ClipKind, Folder } from "$lib/types/clip";
+
+  type CreateClipInput = {
+    folderId: string;
+    title: string;
+    content: string;
+    source: string;
+    kind: ClipKind;
+  };
 
   let folders = $state<Folder[]>([]);
   let clips = $state<Clip[]>([]);
@@ -15,6 +24,8 @@
   let query = $state("");
   let loadError = $state("");
   let isLoading = $state(true);
+  let isSaving = $state(false);
+  let actionError = $state("");
 
   const activeFolder = $derived(folders.find((folder) => folder.id === selectedFolderId) ?? folders[0]);
 
@@ -27,7 +38,7 @@
 
         return `${clip.title} ${clip.content} ${clip.source}`.toLowerCase().includes(needle);
       })
-      .sort((a, b) => Number(b.pinned) - Number(a.pinned) || a.id - b.id),
+      .sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.id - a.id),
   );
 
   const selectedClip = $derived(
@@ -38,23 +49,35 @@
     selectedClip ? (folders.find((folder) => folder.id === selectedClip.folderId)?.name ?? "") : "",
   );
 
-  onMount(async () => {
+  onMount(loadData);
+
+  async function loadData(preferredClipId?: number) {
     try {
       const [nextFolders, nextClips] = await Promise.all([
         invoke<Folder[]>("list_folders"),
         invoke<Clip[]>("list_clips"),
       ]);
 
+      const nextSelectedFolderId = nextFolders.some((folder) => folder.id === selectedFolderId)
+        ? selectedFolderId
+        : (nextFolders[0]?.id ?? "inbox");
+      const nextVisibleClips = nextClips.filter(
+        (clip) => nextSelectedFolderId === "inbox" || clip.folderId === nextSelectedFolderId,
+      );
+
       folders = nextFolders;
       clips = nextClips;
-      selectedFolderId = nextFolders[0]?.id ?? "inbox";
-      selectedClipId = nextClips[0]?.id;
+      selectedFolderId = nextSelectedFolderId;
+      selectedClipId =
+        preferredClipId && nextVisibleClips.some((clip) => clip.id === preferredClipId)
+          ? preferredClipId
+          : (nextVisibleClips[0]?.id ?? undefined);
     } catch (error) {
       loadError = error instanceof Error ? error.message : String(error);
     } finally {
       isLoading = false;
     }
-  });
+  }
 
   function chooseFolder(folderId: string) {
     selectedFolderId = folderId;
@@ -64,6 +87,49 @@
 
   function chooseClip(clipId: number) {
     selectedClipId = clipId;
+  }
+
+  async function createClip(input: CreateClipInput) {
+    actionError = "";
+    isSaving = true;
+
+    try {
+      const createdClip = await invoke<Clip>("create_clip", { payload: input });
+      await loadData(createdClip.id);
+      selectedFolderId = input.folderId;
+    } catch (error) {
+      actionError = error instanceof Error ? error.message : String(error);
+    } finally {
+      isSaving = false;
+    }
+  }
+
+  async function deleteClip(clipId: number) {
+    actionError = "";
+    isSaving = true;
+
+    try {
+      await invoke("delete_clip", { id: clipId });
+      await loadData();
+    } catch (error) {
+      actionError = error instanceof Error ? error.message : String(error);
+    } finally {
+      isSaving = false;
+    }
+  }
+
+  async function toggleClipPinned(clipId: number) {
+    actionError = "";
+    isSaving = true;
+
+    try {
+      const updatedClip = await invoke<Clip>("toggle_clip_pinned", { id: clipId });
+      await loadData(updatedClip.id);
+    } catch (error) {
+      actionError = error instanceof Error ? error.message : String(error);
+    } finally {
+      isSaving = false;
+    }
   }
 
   function handleKeyboard(event: KeyboardEvent) {
@@ -106,6 +172,17 @@
         </div>
       </div>
 
+      <AddClipPanel
+        {folders}
+        {selectedFolderId}
+        {isSaving}
+        onCreateClip={createClip}
+      />
+
+      {#if actionError}
+        <div class="action-error">{actionError}</div>
+      {/if}
+
       {#if isLoading}
         <div class="empty-state">Loading clips from Rust...</div>
       {:else if loadError}
@@ -116,7 +193,13 @@
     </section>
 
     {#if selectedClip}
-      <ClipPreview clip={selectedClip} folderName={selectedClipFolderName} />
+      <ClipPreview
+        clip={selectedClip}
+        folderName={selectedClipFolderName}
+        isBusy={isSaving}
+        onDeleteClip={deleteClip}
+        onTogglePinned={toggleClipPinned}
+      />
     {:else}
       <aside class="preview-placeholder" aria-label="Clip preview">
         <div>No clip selected</div>
@@ -216,6 +299,14 @@
 
   .empty-state.error {
     color: #9e4c34;
+  }
+
+  .action-error {
+    padding: 8px 18px;
+    border-bottom: 1px solid rgba(158, 76, 52, 0.18);
+    background: #fff7f4;
+    color: #9e4c34;
+    font-size: 12px;
   }
 
   .preview-placeholder {

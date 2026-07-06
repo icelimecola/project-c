@@ -5,9 +5,12 @@
   type Props = {
     clip: Clip;
     folderName?: string;
+    isBusy?: boolean;
+    onTogglePinned: (clipId: number) => Promise<void>;
+    onDeleteClip: (clipId: number) => Promise<void>;
   };
 
-  let { clip, folderName = "" }: Props = $props();
+  let { clip, folderName = "", isBusy = false, onTogglePinned, onDeleteClip }: Props = $props();
 </script>
 
 <aside class="preview" aria-label="Clip preview">
@@ -16,8 +19,15 @@
       <ClipKindBadge kind={clip.kind} />
       <h2>{clip.title}</h2>
     </div>
-    <button type="button" class="icon-button" aria-label="Pin clip">
-      <span aria-hidden="true">P</span>
+    <button
+      type="button"
+      class:active={clip.pinned}
+      class="icon-button"
+      aria-label={clip.pinned ? "Unpin clip" : "Pin clip"}
+      disabled={isBusy}
+      onclick={() => onTogglePinned(clip.id)}
+    >
+      <span aria-hidden="true">{clip.pinned ? "U" : "P"}</span>
     </button>
   </header>
 
@@ -41,7 +51,9 @@
   </dl>
 
   <footer class="actions">
-    <button type="button" class="secondary-action">Copy</button>
+    <button type="button" class="danger-action" disabled={isBusy} onclick={() => onDeleteClip(clip.id)}>
+      Delete
+    </button>
     <button type="button" class="primary-action">Paste</button>
   </footer>
 </aside>
@@ -81,6 +93,11 @@
     color: #3d4a43;
     cursor: pointer;
     font-weight: 750;
+  }
+
+  .icon-button.active {
+    background: #fff2d6;
+    color: #8a5c00;
   }
 
   .preview-content {
@@ -141,7 +158,7 @@
   }
 
   .primary-action,
-  .secondary-action {
+  .danger-action {
     height: 40px;
     border: 0;
     border-radius: 8px;
@@ -154,10 +171,16 @@
     color: #ffffff;
   }
 
-  .secondary-action {
+  .danger-action {
     border: 1px solid rgba(37, 50, 45, 0.14);
     background: #ffffff;
-    color: #26312c;
+    color: #9e4c34;
+  }
+
+  .icon-button:disabled,
+  .danger-action:disabled {
+    cursor: not-allowed;
+    opacity: 0.56;
   }
 
   @media (max-width: 940px) {
