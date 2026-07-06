@@ -4,7 +4,7 @@
 
   type Props = {
     clips: Clip[];
-    selectedClipId: number;
+    selectedClipId?: number;
     onChooseClip: (clipId: number) => void;
   };
 

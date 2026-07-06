@@ -1,16 +1,20 @@
 <script lang="ts">
+  import { invoke } from "@tauri-apps/api/core";
+  import { onMount } from "svelte";
   import ClipList from "$lib/components/ClipList.svelte";
   import ClipPreview from "$lib/components/ClipPreview.svelte";
   import SearchToolbar from "$lib/components/SearchToolbar.svelte";
   import Sidebar from "$lib/components/Sidebar.svelte";
-  import { mockClips, mockFolders } from "$lib/data/mock";
+  import type { Clip, Folder } from "$lib/types/clip";
 
-  const folders = mockFolders;
-  const clips = mockClips;
+  let folders = $state<Folder[]>([]);
+  let clips = $state<Clip[]>([]);
 
   let selectedFolderId = $state("inbox");
-  let selectedClipId = $state(1);
+  let selectedClipId = $state<number | undefined>();
   let query = $state("");
+  let loadError = $state("");
+  let isLoading = $state(true);
 
   const activeFolder = $derived(folders.find((folder) => folder.id === selectedFolderId) ?? folders[0]);
 
@@ -27,17 +31,35 @@
   );
 
   const selectedClip = $derived(
-    visibleClips.find((clip) => clip.id === selectedClipId) ?? visibleClips[0] ?? clips[0],
+    visibleClips.find((clip) => clip.id === selectedClipId) ?? visibleClips[0],
   );
 
   const selectedClipFolderName = $derived(
-    folders.find((folder) => folder.id === selectedClip.folderId)?.name ?? "",
+    selectedClip ? (folders.find((folder) => folder.id === selectedClip.folderId)?.name ?? "") : "",
   );
+
+  onMount(async () => {
+    try {
+      const [nextFolders, nextClips] = await Promise.all([
+        invoke<Folder[]>("list_folders"),
+        invoke<Clip[]>("list_clips"),
+      ]);
+
+      folders = nextFolders;
+      clips = nextClips;
+      selectedFolderId = nextFolders[0]?.id ?? "inbox";
+      selectedClipId = nextClips[0]?.id;
+    } catch (error) {
+      loadError = error instanceof Error ? error.message : String(error);
+    } finally {
+      isLoading = false;
+    }
+  });
 
   function chooseFolder(folderId: string) {
     selectedFolderId = folderId;
     const firstClip = clips.find((clip) => folderId === "inbox" || clip.folderId === folderId);
-    selectedClipId = firstClip?.id ?? selectedClipId;
+    selectedClipId = firstClip?.id;
   }
 
   function chooseClip(clipId: number) {
@@ -79,15 +101,27 @@
 
       <div class="section-title">
         <div>
-          <span>{activeFolder.name}</span>
+          <span>{activeFolder?.name ?? "Loading"}</span>
           <strong>{visibleClips.length} clips</strong>
         </div>
       </div>
 
-      <ClipList clips={visibleClips} selectedClipId={selectedClip.id} onChooseClip={chooseClip} />
+      {#if isLoading}
+        <div class="empty-state">Loading clips from Rust...</div>
+      {:else if loadError}
+        <div class="empty-state error">{loadError}</div>
+      {:else}
+        <ClipList clips={visibleClips} selectedClipId={selectedClip?.id} onChooseClip={chooseClip} />
+      {/if}
     </section>
 
-    <ClipPreview clip={selectedClip} folderName={selectedClipFolderName} />
+    {#if selectedClip}
+      <ClipPreview clip={selectedClip} folderName={selectedClipFolderName} />
+    {:else}
+      <aside class="preview-placeholder" aria-label="Clip preview">
+        <div>No clip selected</div>
+      </aside>
+    {/if}
   </section>
 </main>
 
@@ -170,6 +204,31 @@
     font-size: 12px;
   }
 
+  .empty-state {
+    display: grid;
+    flex: 1;
+    min-height: 0;
+    place-items: center;
+    padding: 24px;
+    color: #68726c;
+    font-size: 13px;
+  }
+
+  .empty-state.error {
+    color: #9e4c34;
+  }
+
+  .preview-placeholder {
+    display: grid;
+    min-width: 0;
+    place-items: center;
+    padding: 18px;
+    border-left: 1px solid rgba(37, 50, 45, 0.1);
+    background: #f7f9fb;
+    color: #68726c;
+    font-size: 13px;
+  }
+
   @media (max-width: 940px) {
     .app-shell {
       padding: 0;
@@ -181,6 +240,10 @@
       height: 100vh;
       border: 0;
       border-radius: 0;
+    }
+
+    .preview-placeholder {
+      display: none;
     }
   }
 
