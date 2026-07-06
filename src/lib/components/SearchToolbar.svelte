@@ -1,9 +1,11 @@
 <script lang="ts">
   type Props = {
     query: string;
+    isCapturing?: boolean;
+    onCaptureClipboard: () => Promise<void>;
   };
 
-  let { query = $bindable() }: Props = $props();
+  let { query = $bindable(), isCapturing = false, onCaptureClipboard }: Props = $props();
 </script>
 
 <header class="toolbar">
@@ -15,12 +17,15 @@
     <button type="button" class="selected">Recent</button>
     <button type="button">Pinned</button>
   </div>
+  <button type="button" class="capture-button" disabled={isCapturing} onclick={onCaptureClipboard}>
+    {isCapturing ? "Capturing" : "Capture"}
+  </button>
 </header>
 
 <style>
   .toolbar {
     display: grid;
-    grid-template-columns: 1fr auto;
+    grid-template-columns: 1fr auto auto;
     gap: 14px;
     align-items: center;
     min-height: 72px;
@@ -96,6 +101,23 @@
     background: #ffffff;
     color: #18201d;
     box-shadow: 0 1px 8px rgba(37, 50, 45, 0.1);
+  }
+
+  .capture-button {
+    height: 36px;
+    padding: 0 13px;
+    border: 0;
+    border-radius: 8px;
+    background: #1e6f5c;
+    color: #ffffff;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 750;
+  }
+
+  .capture-button:disabled {
+    cursor: not-allowed;
+    opacity: 0.56;
   }
 
   @media (max-width: 680px) {

@@ -25,6 +25,7 @@
   let loadError = $state("");
   let isLoading = $state(true);
   let isSaving = $state(false);
+  let isCapturing = $state(false);
   let actionError = $state("");
 
   const activeFolder = $derived(folders.find((folder) => folder.id === selectedFolderId) ?? folders[0]);
@@ -104,6 +105,21 @@
     }
   }
 
+  async function captureClipboardText() {
+    actionError = "";
+    isCapturing = true;
+
+    try {
+      const folderId = selectedFolderId === "inbox" ? "inbox" : selectedFolderId;
+      const capturedClip = await invoke<Clip>("capture_clipboard_text", { folderId });
+      await loadData(capturedClip.id);
+    } catch (error) {
+      actionError = error instanceof Error ? error.message : String(error);
+    } finally {
+      isCapturing = false;
+    }
+  }
+
   async function deleteClip(clipId: number) {
     actionError = "";
     isSaving = true;
@@ -163,7 +179,11 @@
     <Sidebar {folders} {selectedFolderId} onChooseFolder={chooseFolder} />
 
     <section class="clip-column" aria-label="Clips">
-      <SearchToolbar bind:query />
+      <SearchToolbar
+        bind:query
+        {isCapturing}
+        onCaptureClipboard={captureClipboardText}
+      />
 
       <div class="section-title">
         <div>
