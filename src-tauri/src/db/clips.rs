@@ -40,6 +40,13 @@ pub fn create_clip(app: &AppHandle, payload: CreateClipPayload) -> DbResult<Clip
         return Err("Clip content cannot be empty.".into());
     }
 
+    let content_hash = content::content_hash(content);
+
+    if let Some(existing_clip) = find_active_clip_by_hash(&conn, &content_hash)? {
+        touch_clip(&conn, existing_clip.id)?;
+        return query_clip_by_id(&conn, existing_clip.id);
+    }
+
     let folder_id = if payload.folder_id.trim().is_empty() {
         "inbox"
     } else {
@@ -72,7 +79,7 @@ pub fn create_clip(app: &AppHandle, payload: CreateClipPayload) -> DbResult<Clip
             folder_id,
             title,
             content,
-            content::content_hash(content),
+            content_hash,
             if source.is_empty() { "Manual" } else { source },
             source_app,
             mime_type,
@@ -83,6 +90,53 @@ pub fn create_clip(app: &AppHandle, payload: CreateClipPayload) -> DbResult<Clip
 
     let id = conn.last_insert_rowid() as u32;
     query_clip_by_id(&conn, id)
+}
+
+fn find_active_clip_by_hash(conn: &Connection, content_hash: &str) -> DbResult<Option<Clip>> {
+    conn.query_row(
+        "
+        select
+            id,
+            folder_id,
+            title,
+            content,
+            content_hash,
+            source,
+            source_app,
+            time_label,
+            created_at,
+            updated_at,
+            last_used_at,
+            mime_type,
+            deleted_at,
+            pinned,
+            kind
+        from clips
+        where content_hash = ?1 and deleted_at is null
+        order by datetime(created_at) desc, id desc
+        limit 1
+        ",
+        params![content_hash],
+        row_to_clip,
+    )
+    .optional()
+    .map_err(|error| format!("Failed to query duplicate clip: {error}"))
+}
+
+fn touch_clip(conn: &Connection, id: u32) -> DbResult<()> {
+    conn.execute(
+        "
+        update clips
+        set
+            last_used_at = datetime('now'),
+            updated_at = datetime('now')
+        where id = ?1 and deleted_at is null
+        ",
+        params![id],
+    )
+    .map_err(|error| format!("Failed to update duplicate clip usage: {error}"))?;
+
+    Ok(())
 }
 
 pub fn delete_clip(app: &AppHandle, id: u32) -> DbResult<()> {
