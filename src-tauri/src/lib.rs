@@ -2,6 +2,7 @@ mod clipboard;
 mod commands;
 mod db;
 mod models;
+mod shortcuts;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -10,6 +11,7 @@ pub fn run() {
         .setup(|app| {
             db::init(app.handle())
                 .map_err(|error| std::io::Error::new(std::io::ErrorKind::Other, error))?;
+            shortcuts::register(app.handle());
             clipboard::monitor::start(app.handle().clone());
             Ok(())
         })
