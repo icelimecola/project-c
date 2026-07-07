@@ -45,6 +45,7 @@ pub fn ensure(conn: &Connection) -> DbResult<()> {
 
     migrate_clips_table(conn)?;
     backfill_clip_metadata(conn)?;
+    ensure_clip_fts(conn)?;
     ensure_default_settings(conn)
 }
 
@@ -129,6 +130,65 @@ fn backfill_clip_metadata(conn: &Connection) -> DbResult<()> {
     }
 
     Ok(())
+}
+
+fn ensure_clip_fts(conn: &Connection) -> DbResult<()> {
+    let should_rebuild = !table_exists(conn, "clips_fts")?;
+
+    conn.execute_batch(
+        "
+        create virtual table if not exists clips_fts using fts5(
+            title,
+            content,
+            source,
+            source_app,
+            content='clips',
+            content_rowid='id',
+            tokenize='trigram'
+        );
+
+        create trigger if not exists clips_ai_fts after insert on clips
+        when new.deleted_at is null
+        begin
+            insert into clips_fts(rowid, title, content, source, source_app)
+            values (new.id, new.title, new.content, new.source, new.source_app);
+        end;
+
+        create trigger if not exists clips_ad_fts after delete on clips
+        begin
+            insert into clips_fts(clips_fts, rowid, title, content, source, source_app)
+            values ('delete', old.id, old.title, old.content, old.source, old.source_app);
+        end;
+
+        create trigger if not exists clips_au_fts
+        after update of title, content, source, source_app, deleted_at on clips
+        begin
+            insert into clips_fts(clips_fts, rowid, title, content, source, source_app)
+            values ('delete', old.id, old.title, old.content, old.source, old.source_app);
+
+            insert into clips_fts(rowid, title, content, source, source_app)
+            select new.id, new.title, new.content, new.source, new.source_app
+            where new.deleted_at is null;
+        end;
+        ",
+    )
+    .map_err(|error| format!("Failed to ensure clip FTS schema: {error}"))?;
+
+    if should_rebuild {
+        conn.execute("insert into clips_fts(clips_fts) values ('rebuild')", [])
+            .map_err(|error| format!("Failed to rebuild clip FTS index: {error}"))?;
+    }
+
+    Ok(())
+}
+
+fn table_exists(conn: &Connection, name: &str) -> DbResult<bool> {
+    conn.query_row(
+        "select exists(select 1 from sqlite_master where type in ('table', 'view') and name = ?1)",
+        params![name],
+        |row| row.get::<_, bool>(0),
+    )
+    .map_err(|error| format!("Failed to inspect database table {name}: {error}"))
 }
 
 fn ensure_default_settings(conn: &Connection) -> DbResult<()> {

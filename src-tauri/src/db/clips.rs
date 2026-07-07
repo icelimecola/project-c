@@ -278,16 +278,31 @@ fn query_searched_clips(
     folder_id: Option<String>,
     kind: Option<ClipKind>,
 ) -> DbResult<Vec<Clip>> {
+    let trimmed_query = query
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+
+    if let Some(fts_query) = trimmed_query.and_then(fts_match_query) {
+        return query_fts_clips(conn, &fts_query, folder_id, kind);
+    }
+
+    query_like_clips(conn, trimmed_query, folder_id, kind)
+}
+
+fn query_like_clips(
+    conn: &Connection,
+    query: Option<&str>,
+    folder_id: Option<String>,
+    kind: Option<ClipKind>,
+) -> DbResult<Vec<Clip>> {
     let folder_filter = folder_id
         .as_deref()
         .map(str::trim)
         .filter(|value| !value.is_empty());
     let kind_filter = kind.as_ref().map(ClipKind::as_str);
     let query_pattern = query
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(|value| format!("%{}%", value.to_lowercase()));
+        .map(|value| format!("%{}%", escape_like_pattern(&value.to_lowercase())));
 
     let mut stmt = conn
         .prepare(
@@ -316,7 +331,7 @@ fn query_searched_clips(
                     ?3 is null
                     or lower(
                         title || ' ' || content || ' ' || source || ' ' || coalesce(source_app, '')
-                    ) like ?3
+                    ) like ?3 escape '\\'
                 )
             order by pinned desc, datetime(created_at) desc, id desc
             limit 200
@@ -332,6 +347,87 @@ fn query_searched_clips(
         .map_err(|error| format!("Failed to search clips: {error}"))?;
 
     collect_rows(clips, "clip")
+}
+
+fn query_fts_clips(
+    conn: &Connection,
+    fts_query: &str,
+    folder_id: Option<String>,
+    kind: Option<ClipKind>,
+) -> DbResult<Vec<Clip>> {
+    let folder_filter = folder_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let kind_filter = kind.as_ref().map(ClipKind::as_str);
+
+    let mut stmt = conn
+        .prepare(
+            "
+            select
+                clips.id,
+                clips.folder_id,
+                clips.title,
+                clips.content,
+                clips.content_hash,
+                clips.source,
+                clips.source_app,
+                clips.time_label,
+                clips.created_at,
+                clips.updated_at,
+                clips.last_used_at,
+                clips.mime_type,
+                clips.deleted_at,
+                clips.pinned,
+                clips.kind
+            from clips_fts
+            join clips on clips.id = clips_fts.rowid
+            where clips_fts match ?1
+                and clips.deleted_at is null
+                and (?2 is null or ?2 = 'inbox' or clips.folder_id = ?2)
+                and (?3 is null or clips.kind = ?3)
+            order by
+                clips.pinned desc,
+                bm25(clips_fts, 6.0, 3.0, 1.0, 1.0),
+                datetime(clips.created_at) desc,
+                clips.id desc
+            limit 200
+            ",
+        )
+        .map_err(|error| format!("Failed to prepare clip FTS query: {error}"))?;
+
+    let clips = stmt
+        .query_map(params![fts_query, folder_filter, kind_filter], row_to_clip)
+        .map_err(|error| format!("Failed to search clips with FTS: {error}"))?;
+
+    collect_rows(clips, "clip")
+}
+
+fn fts_match_query(query: &str) -> Option<String> {
+    let mut terms = Vec::new();
+
+    for term in query.split_whitespace() {
+        let term = term.trim();
+
+        if term.chars().count() < 3 {
+            return None;
+        }
+
+        terms.push(format!("\"{}\"", term.replace('"', "\"\"")));
+    }
+
+    if terms.is_empty() {
+        None
+    } else {
+        Some(terms.join(" AND "))
+    }
+}
+
+fn escape_like_pattern(value: &str) -> String {
+    value
+        .replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_")
 }
 
 fn query_clip_by_id(conn: &Connection, id: u32) -> DbResult<Clip> {
