@@ -31,19 +31,12 @@
   let isMonitorSaving = $state(false);
   let monitorEnabled = $state(true);
   let actionError = $state("");
+  let hasLoaded = $state(false);
 
   const activeFolder = $derived(folders.find((folder) => folder.id === selectedFolderId) ?? folders[0]);
 
   const visibleClips = $derived(
-    clips
-      .filter((clip) => selectedFolderId === "inbox" || clip.folderId === selectedFolderId)
-      .filter((clip) => {
-        const needle = query.trim().toLowerCase();
-        if (!needle) return true;
-
-        return `${clip.title} ${clip.content} ${clip.source}`.toLowerCase().includes(needle);
-      })
-      .sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.id - a.id),
+    [...clips].sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.id - a.id),
   );
 
   const selectedClip = $derived(
@@ -74,31 +67,47 @@
     };
   });
 
-  async function loadData(preferredClipId?: number) {
-    try {
-      const [nextFolders, nextClips] = await Promise.all([
-        invoke<Folder[]>("list_folders"),
-        invoke<Clip[]>("list_clips"),
-      ]);
+  $effect(() => {
+    const nextQuery = query;
+    const nextFolderId = selectedFolderId;
 
-      const nextSelectedFolderId = nextFolders.some((folder) => folder.id === selectedFolderId)
-        ? selectedFolderId
+    if (!hasLoaded) return;
+
+    const timeout = window.setTimeout(() => {
+      void loadData(undefined, nextFolderId, nextQuery);
+    }, 180);
+
+    return () => window.clearTimeout(timeout);
+  });
+
+  async function loadData(
+    preferredClipId?: number,
+    folderId = selectedFolderId,
+    searchQuery = query,
+  ) {
+    try {
+      const nextFolders = await invoke<Folder[]>("list_folders");
+
+      const nextSelectedFolderId = nextFolders.some((folder) => folder.id === folderId)
+        ? folderId
         : (nextFolders[0]?.id ?? "inbox");
-      const nextVisibleClips = nextClips.filter(
-        (clip) => nextSelectedFolderId === "inbox" || clip.folderId === nextSelectedFolderId,
-      );
+      const nextClips = await invoke<Clip[]>("search_clips", {
+        query: searchQuery,
+        folderId: nextSelectedFolderId,
+      });
 
       folders = nextFolders;
       clips = nextClips;
       selectedFolderId = nextSelectedFolderId;
       selectedClipId =
-        preferredClipId && nextVisibleClips.some((clip) => clip.id === preferredClipId)
+        preferredClipId && nextClips.some((clip) => clip.id === preferredClipId)
           ? preferredClipId
-          : (nextVisibleClips[0]?.id ?? undefined);
+          : (nextClips[0]?.id ?? undefined);
     } catch (error) {
       loadError = error instanceof Error ? error.message : String(error);
     } finally {
       isLoading = false;
+      hasLoaded = true;
     }
   }
 
@@ -113,8 +122,6 @@
 
   function chooseFolder(folderId: string) {
     selectedFolderId = folderId;
-    const firstClip = clips.find((clip) => folderId === "inbox" || clip.folderId === folderId);
-    selectedClipId = firstClip?.id;
   }
 
   function chooseClip(clipId: number) {

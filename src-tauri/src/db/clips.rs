@@ -15,6 +15,16 @@ pub fn list_clips(app: &AppHandle) -> DbResult<Vec<Clip>> {
     query_clips(&conn)
 }
 
+pub fn search_clips(
+    app: &AppHandle,
+    query: Option<String>,
+    folder_id: Option<String>,
+    kind: Option<ClipKind>,
+) -> DbResult<Vec<Clip>> {
+    let conn = open_ready_connection(app)?;
+    query_searched_clips(&conn, query, folder_id, kind)
+}
+
 pub fn create_clip(app: &AppHandle, payload: CreateClipPayload) -> DbResult<Clip> {
     let conn = open_ready_connection(app)?;
     let title = payload.title.trim();
@@ -258,6 +268,68 @@ fn query_clips(conn: &Connection) -> DbResult<Vec<Clip>> {
     let clips = stmt
         .query_map([], |row| row_to_clip(row))
         .map_err(|error| format!("Failed to query clips: {error}"))?;
+
+    collect_rows(clips, "clip")
+}
+
+fn query_searched_clips(
+    conn: &Connection,
+    query: Option<String>,
+    folder_id: Option<String>,
+    kind: Option<ClipKind>,
+) -> DbResult<Vec<Clip>> {
+    let folder_filter = folder_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let kind_filter = kind.as_ref().map(ClipKind::as_str);
+    let query_pattern = query
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| format!("%{}%", value.to_lowercase()));
+
+    let mut stmt = conn
+        .prepare(
+            "
+            select
+                id,
+                folder_id,
+                title,
+                content,
+                content_hash,
+                source,
+                source_app,
+                time_label,
+                created_at,
+                updated_at,
+                last_used_at,
+                mime_type,
+                deleted_at,
+                pinned,
+                kind
+            from clips
+            where deleted_at is null
+                and (?1 is null or ?1 = 'inbox' or folder_id = ?1)
+                and (?2 is null or kind = ?2)
+                and (
+                    ?3 is null
+                    or lower(
+                        title || ' ' || content || ' ' || source || ' ' || coalesce(source_app, '')
+                    ) like ?3
+                )
+            order by pinned desc, datetime(created_at) desc, id desc
+            limit 200
+            ",
+        )
+        .map_err(|error| format!("Failed to prepare clip search query: {error}"))?;
+
+    let clips = stmt
+        .query_map(
+            params![folder_filter, kind_filter, query_pattern.as_deref()],
+            row_to_clip,
+        )
+        .map_err(|error| format!("Failed to search clips: {error}"))?;
 
     collect_rows(clips, "clip")
 }

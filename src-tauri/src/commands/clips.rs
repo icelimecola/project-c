@@ -1,4 +1,4 @@
-use crate::models::{Clip, CreateClipPayload, Folder};
+use crate::models::{Clip, ClipKind, CreateClipPayload, Folder};
 
 #[tauri::command]
 pub fn list_folders(app: tauri::AppHandle) -> Result<Vec<Folder>, String> {
@@ -8,6 +8,16 @@ pub fn list_folders(app: tauri::AppHandle) -> Result<Vec<Folder>, String> {
 #[tauri::command]
 pub fn list_clips(app: tauri::AppHandle) -> Result<Vec<Clip>, String> {
     crate::db::clips::list_clips(&app)
+}
+
+#[tauri::command]
+pub fn search_clips(
+    app: tauri::AppHandle,
+    query: Option<String>,
+    folder_id: Option<String>,
+    kind: Option<ClipKind>,
+) -> Result<Vec<Clip>, String> {
+    crate::db::clips::search_clips(&app, query, folder_id, kind)
 }
 
 #[tauri::command]
