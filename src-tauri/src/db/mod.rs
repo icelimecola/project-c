@@ -6,6 +6,10 @@ mod seed;
 
 type DbResult<T> = Result<T, String>;
 
+pub fn content_hash(content: &str) -> String {
+    content::content_hash(content)
+}
+
 pub fn init(app: &tauri::AppHandle) -> DbResult<()> {
     let conn = connection::open(app)?;
     schema::ensure(&conn)?;

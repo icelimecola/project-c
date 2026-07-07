@@ -20,11 +20,7 @@ pub fn capture_clipboard_text(
     app: tauri::AppHandle,
     folder_id: Option<String>,
 ) -> Result<Clip, String> {
-    let mut clipboard = arboard::Clipboard::new()
-        .map_err(|error| format!("Failed to access system clipboard: {error}"))?;
-    let text = clipboard
-        .get_text()
-        .map_err(|error| format!("Failed to read text from system clipboard: {error}"))?;
+    let text = crate::clipboard::read_text()?;
     let trimmed_text = text.trim();
 
     if trimmed_text.is_empty() {
@@ -33,15 +29,11 @@ pub fn capture_clipboard_text(
 
     crate::db::clips::create_clip(
         &app,
-        CreateClipPayload {
-            folder_id: folder_id.unwrap_or_else(|| "inbox".into()),
-            title: title_from_clipboard_text(trimmed_text),
-            content: trimmed_text.into(),
-            source: "Clipboard".into(),
-            source_app: None,
-            mime_type: None,
-            kind: kind_from_clipboard_text(trimmed_text),
-        },
+        crate::clipboard::payload_from_text(
+            folder_id.unwrap_or_else(|| "inbox".into()),
+            trimmed_text,
+            "Clipboard",
+        ),
     )
 }
 
@@ -53,31 +45,4 @@ pub fn delete_clip(app: tauri::AppHandle, id: u32) -> Result<(), String> {
 #[tauri::command]
 pub fn toggle_clip_pinned(app: tauri::AppHandle, id: u32) -> Result<Clip, String> {
     crate::db::clips::toggle_clip_pinned(&app, id)
-}
-
-fn title_from_clipboard_text(text: &str) -> String {
-    let first_line = text
-        .lines()
-        .find(|line| !line.trim().is_empty())
-        .unwrap_or("Clipboard text")
-        .trim();
-    let title: String = first_line.chars().take(48).collect();
-
-    if first_line.chars().count() > 48 {
-        format!("{title}...")
-    } else {
-        title
-    }
-}
-
-fn kind_from_clipboard_text(text: &str) -> crate::models::ClipKind {
-    let trimmed = text.trim();
-
-    if trimmed.starts_with("https://") || trimmed.starts_with("http://") {
-        crate::models::ClipKind::Link
-    } else if trimmed.contains('\n') && (trimmed.contains('{') || trimmed.contains(';')) {
-        crate::models::ClipKind::Code
-    } else {
-        crate::models::ClipKind::Text
-    }
 }

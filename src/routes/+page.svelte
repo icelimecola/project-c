@@ -1,5 +1,6 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
+  import { listen } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
   import AddClipPanel from "$lib/components/AddClipPanel.svelte";
   import ClipList from "$lib/components/ClipList.svelte";
@@ -50,7 +51,24 @@
     selectedClip ? (folders.find((folder) => folder.id === selectedClip.folderId)?.name ?? "") : "",
   );
 
-  onMount(loadData);
+  onMount(() => {
+    let unlisten: (() => void) | undefined;
+
+    void loadData();
+    listen<Clip>("clips-changed", (event) => {
+      void loadData(event.payload.id);
+    })
+      .then((nextUnlisten) => {
+        unlisten = nextUnlisten;
+      })
+      .catch((error) => {
+        actionError = error instanceof Error ? error.message : String(error);
+      });
+
+    return () => {
+      unlisten?.();
+    };
+  });
 
   async function loadData(preferredClipId?: number) {
     try {

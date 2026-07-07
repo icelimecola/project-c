@@ -1,3 +1,4 @@
+mod clipboard;
 mod commands;
 mod db;
 mod models;
@@ -9,6 +10,7 @@ pub fn run() {
         .setup(|app| {
             db::init(app.handle())
                 .map_err(|error| std::io::Error::new(std::io::ErrorKind::Other, error))?;
+            clipboard::monitor::start(app.handle().clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
