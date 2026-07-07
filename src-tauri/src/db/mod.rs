@@ -3,6 +3,7 @@ mod connection;
 mod content;
 mod schema;
 mod seed;
+pub mod settings;
 
 type DbResult<T> = Result<T, String>;
 

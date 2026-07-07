@@ -12,6 +12,11 @@ pub fn start(app: AppHandle) {
         let mut last_hash: Option<String> = None;
 
         loop {
+            if !monitor_enabled(&app) {
+                thread::sleep(CLIPBOARD_POLL_INTERVAL);
+                continue;
+            }
+
             if let Some(clip) = capture_next_text_clip(&app, &mut last_hash) {
                 if let Err(error) = app.emit(CLIPS_CHANGED_EVENT, clip) {
                     eprintln!("Failed to emit {CLIPS_CHANGED_EVENT}: {error}");
@@ -21,6 +26,16 @@ pub fn start(app: AppHandle) {
             thread::sleep(CLIPBOARD_POLL_INTERVAL);
         }
     });
+}
+
+fn monitor_enabled(app: &AppHandle) -> bool {
+    match db::settings::clipboard_monitor_enabled(app) {
+        Ok(enabled) => enabled,
+        Err(error) => {
+            eprintln!("Failed to read clipboard monitor setting: {error}");
+            false
+        }
+    }
 }
 
 fn capture_next_text_clip(app: &AppHandle, last_hash: &mut Option<String>) -> Option<Clip> {

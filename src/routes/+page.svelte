@@ -8,6 +8,7 @@
   import SearchToolbar from "$lib/components/SearchToolbar.svelte";
   import Sidebar from "$lib/components/Sidebar.svelte";
   import type { Clip, ClipKind, Folder } from "$lib/types/clip";
+  import type { AppSettings } from "$lib/types/settings";
 
   type CreateClipInput = {
     folderId: string;
@@ -27,6 +28,8 @@
   let isLoading = $state(true);
   let isSaving = $state(false);
   let isCapturing = $state(false);
+  let isMonitorSaving = $state(false);
+  let monitorEnabled = $state(true);
   let actionError = $state("");
 
   const activeFolder = $derived(folders.find((folder) => folder.id === selectedFolderId) ?? folders[0]);
@@ -55,6 +58,7 @@
     let unlisten: (() => void) | undefined;
 
     void loadData();
+    void loadSettings();
     listen<Clip>("clips-changed", (event) => {
       void loadData(event.payload.id);
     })
@@ -98,6 +102,15 @@
     }
   }
 
+  async function loadSettings() {
+    try {
+      const settings = await invoke<AppSettings>("get_settings");
+      monitorEnabled = settings.clipboardMonitorEnabled;
+    } catch (error) {
+      actionError = error instanceof Error ? error.message : String(error);
+    }
+  }
+
   function chooseFolder(folderId: string) {
     selectedFolderId = folderId;
     const firstClip = clips.find((clip) => folderId === "inbox" || clip.folderId === folderId);
@@ -135,6 +148,22 @@
       actionError = error instanceof Error ? error.message : String(error);
     } finally {
       isCapturing = false;
+    }
+  }
+
+  async function toggleMonitor() {
+    actionError = "";
+    isMonitorSaving = true;
+
+    try {
+      const settings = await invoke<AppSettings>("set_clipboard_monitor_enabled", {
+        enabled: !monitorEnabled,
+      });
+      monitorEnabled = settings.clipboardMonitorEnabled;
+    } catch (error) {
+      actionError = error instanceof Error ? error.message : String(error);
+    } finally {
+      isMonitorSaving = false;
     }
   }
 
@@ -200,7 +229,10 @@
       <SearchToolbar
         bind:query
         {isCapturing}
+        {isMonitorSaving}
+        {monitorEnabled}
         onCaptureClipboard={captureClipboardText}
+        onToggleMonitor={toggleMonitor}
       />
 
       <div class="section-title">

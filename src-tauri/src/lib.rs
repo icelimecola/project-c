@@ -19,7 +19,9 @@ pub fn run() {
             commands::clips::delete_clip,
             commands::clips::list_clips,
             commands::clips::list_folders,
-            commands::clips::toggle_clip_pinned
+            commands::clips::toggle_clip_pinned,
+            commands::settings::get_settings,
+            commands::settings::set_clipboard_monitor_enabled
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

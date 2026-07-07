@@ -12,6 +12,12 @@ pub struct Folder {
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct AppSettings {
+    pub clipboard_monitor_enabled: bool,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Clip {
     pub id: u32,
     pub folder_id: String,

@@ -33,12 +33,19 @@ pub fn ensure(conn: &Connection) -> DbResult<()> {
             kind text not null
         );
 
+        create table if not exists settings (
+            key text primary key,
+            value text not null,
+            updated_at text not null
+        );
+
         ",
     )
     .map_err(|error| format!("Failed to ensure database schema: {error}"))?;
 
     migrate_clips_table(conn)?;
-    backfill_clip_metadata(conn)
+    backfill_clip_metadata(conn)?;
+    ensure_default_settings(conn)
 }
 
 fn migrate_clips_table(conn: &Connection) -> DbResult<()> {
@@ -120,6 +127,19 @@ fn backfill_clip_metadata(conn: &Connection) -> DbResult<()> {
         )
         .map_err(|error| format!("Failed to backfill content hash for clip {id}: {error}"))?;
     }
+
+    Ok(())
+}
+
+fn ensure_default_settings(conn: &Connection) -> DbResult<()> {
+    conn.execute(
+        "
+        insert or ignore into settings (key, value, updated_at)
+        values ('clipboard_monitor_enabled', 'true', datetime('now'))
+        ",
+        [],
+    )
+    .map_err(|error| format!("Failed to ensure default settings: {error}"))?;
 
     Ok(())
 }

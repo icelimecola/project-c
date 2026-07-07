@@ -2,10 +2,20 @@
   type Props = {
     query: string;
     isCapturing?: boolean;
+    isMonitorSaving?: boolean;
+    monitorEnabled?: boolean;
     onCaptureClipboard: () => Promise<void>;
+    onToggleMonitor: () => Promise<void>;
   };
 
-  let { query = $bindable(), isCapturing = false, onCaptureClipboard }: Props = $props();
+  let {
+    query = $bindable(),
+    isCapturing = false,
+    isMonitorSaving = false,
+    monitorEnabled = true,
+    onCaptureClipboard,
+    onToggleMonitor,
+  }: Props = $props();
 </script>
 
 <header class="toolbar">
@@ -20,12 +30,15 @@
   <button type="button" class="capture-button" disabled={isCapturing} onclick={onCaptureClipboard}>
     {isCapturing ? "Capturing" : "Capture"}
   </button>
+  <button type="button" class:active={monitorEnabled} class="monitor-button" disabled={isMonitorSaving} onclick={onToggleMonitor}>
+    {monitorEnabled ? "Monitor On" : "Monitor Off"}
+  </button>
 </header>
 
 <style>
   .toolbar {
     display: grid;
-    grid-template-columns: 1fr auto auto;
+    grid-template-columns: 1fr auto auto auto;
     gap: 14px;
     align-items: center;
     min-height: 72px;
@@ -103,7 +116,8 @@
     box-shadow: 0 1px 8px rgba(37, 50, 45, 0.1);
   }
 
-  .capture-button {
+  .capture-button,
+  .monitor-button {
     height: 36px;
     padding: 0 13px;
     border: 0;
@@ -116,6 +130,23 @@
   }
 
   .capture-button:disabled {
+    cursor: not-allowed;
+    opacity: 0.56;
+  }
+
+  .monitor-button {
+    border: 1px solid rgba(37, 50, 45, 0.14);
+    background: #ffffff;
+    color: #4e5b54;
+  }
+
+  .monitor-button.active {
+    border-color: rgba(30, 111, 92, 0.26);
+    background: #e6f4ef;
+    color: #1e6f5c;
+  }
+
+  .monitor-button:disabled {
     cursor: not-allowed;
     opacity: 0.56;
   }
