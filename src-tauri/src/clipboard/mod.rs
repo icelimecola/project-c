@@ -11,6 +11,15 @@ pub fn read_text() -> Result<String, String> {
         .map_err(|error| format!("Failed to read text from system clipboard: {error}"))
 }
 
+pub fn write_text(text: &str) -> Result<(), String> {
+    let mut clipboard = arboard::Clipboard::new()
+        .map_err(|error| format!("Failed to access system clipboard: {error}"))?;
+
+    clipboard
+        .set_text(text.to_owned())
+        .map_err(|error| format!("Failed to write text to system clipboard: {error}"))
+}
+
 pub fn payload_from_text(
     folder_id: impl Into<String>,
     text: &str,

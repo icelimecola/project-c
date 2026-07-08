@@ -4,6 +4,7 @@
     isCapturing?: boolean;
     isMonitorSaving?: boolean;
     monitorEnabled?: boolean;
+    focusRequest?: number;
     onCaptureClipboard: () => Promise<void>;
     onToggleMonitor: () => Promise<void>;
   };
@@ -13,15 +14,33 @@
     isCapturing = false,
     isMonitorSaving = false,
     monitorEnabled = true,
+    focusRequest = 0,
     onCaptureClipboard,
     onToggleMonitor,
   }: Props = $props();
+
+  let searchInput: HTMLInputElement;
+
+  $effect(() => {
+    focusRequest;
+
+    if (!searchInput) return;
+
+    searchInput.focus();
+    searchInput.select();
+  });
 </script>
 
 <header class="toolbar">
   <div class="search-wrap">
     <span class="search-icon" aria-hidden="true"></span>
-    <input bind:value={query} placeholder="Search clips" aria-label="Search clips" />
+    <input
+      bind:this={searchInput}
+      bind:value={query}
+      data-quick-search="true"
+      placeholder="Search clips"
+      aria-label="Search clips"
+    />
   </div>
   <div class="view-tabs" aria-label="Clip filters">
     <button type="button" class="selected">Recent</button>

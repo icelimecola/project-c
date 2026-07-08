@@ -1,6 +1,7 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
+  import { getCurrentWindow } from "@tauri-apps/api/window";
   import { onMount } from "svelte";
   import AddClipPanel from "$lib/components/AddClipPanel.svelte";
   import ClipList from "$lib/components/ClipList.svelte";
@@ -32,6 +33,7 @@
   let monitorEnabled = $state(true);
   let actionError = $state("");
   let hasLoaded = $state(false);
+  let searchFocusRequest = $state(0);
 
   const activeFolder = $derived(folders.find((folder) => folder.id === selectedFolderId) ?? folders[0]);
 
@@ -48,7 +50,8 @@
   );
 
   onMount(() => {
-    let unlisten: (() => void) | undefined;
+    let unlistenClipsChanged: (() => void) | undefined;
+    let unlistenQuickAccess: (() => void) | undefined;
 
     void loadData();
     void loadSettings();
@@ -56,14 +59,24 @@
       void loadData(event.payload.id);
     })
       .then((nextUnlisten) => {
-        unlisten = nextUnlisten;
+        unlistenClipsChanged = nextUnlisten;
+      })
+      .catch((error) => {
+        actionError = error instanceof Error ? error.message : String(error);
+      });
+    listen("quick-access-opened", () => {
+      focusSearch();
+    })
+      .then((nextUnlisten) => {
+        unlistenQuickAccess = nextUnlisten;
       })
       .catch((error) => {
         actionError = error instanceof Error ? error.message : String(error);
       });
 
     return () => {
-      unlisten?.();
+      unlistenClipsChanged?.();
+      unlistenQuickAccess?.();
     };
   });
 
@@ -202,23 +215,91 @@
     }
   }
 
+  async function copySelectedClip() {
+    if (!selectedClip || isSaving) return;
+
+    actionError = "";
+    isSaving = true;
+
+    try {
+      const updatedClip = await invoke<Clip>("copy_clip_to_clipboard", { id: selectedClip.id });
+      await loadData(updatedClip.id);
+      focusSearch();
+    } catch (error) {
+      actionError = error instanceof Error ? error.message : String(error);
+    } finally {
+      isSaving = false;
+    }
+  }
+
+  async function hideWindow() {
+    try {
+      await getCurrentWindow().hide();
+    } catch (error) {
+      actionError = error instanceof Error ? error.message : String(error);
+    }
+  }
+
+  function focusSearch() {
+    searchFocusRequest += 1;
+  }
+
   function handleKeyboard(event: KeyboardEvent) {
-    if (!visibleClips.length) return;
+    if (!shouldHandleQuickPanelKey(event)) return;
 
     const currentIndex = Math.max(
       0,
-      visibleClips.findIndex((clip) => clip.id === selectedClipId),
+      visibleClips.findIndex((clip) => clip.id === selectedClip?.id),
     );
 
     if (event.key === "ArrowDown") {
+      if (!visibleClips.length) return;
       event.preventDefault();
       selectedClipId = visibleClips[Math.min(currentIndex + 1, visibleClips.length - 1)].id;
     }
 
     if (event.key === "ArrowUp") {
+      if (!visibleClips.length) return;
       event.preventDefault();
       selectedClipId = visibleClips[Math.max(currentIndex - 1, 0)].id;
     }
+
+    if (event.key === "Enter") {
+      event.preventDefault();
+      void copySelectedClip();
+    }
+
+    if (event.key === "Escape") {
+      event.preventDefault();
+
+      if (query.trim()) {
+        query = "";
+        focusSearch();
+      } else {
+        void hideWindow();
+      }
+    }
+  }
+
+  function shouldHandleQuickPanelKey(event: KeyboardEvent) {
+    if (!["ArrowDown", "ArrowUp", "Enter", "Escape"].includes(event.key)) {
+      return false;
+    }
+
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) {
+      return true;
+    }
+
+    const isSearchInput =
+      target instanceof HTMLInputElement && target.dataset.quickSearch === "true";
+    const isEditableTarget =
+      target instanceof HTMLInputElement ||
+      target instanceof HTMLTextAreaElement ||
+      target instanceof HTMLSelectElement ||
+      target.isContentEditable;
+
+    return isSearchInput || !isEditableTarget;
   }
 </script>
 
@@ -238,6 +319,7 @@
         {isCapturing}
         {isMonitorSaving}
         {monitorEnabled}
+        focusRequest={searchFocusRequest}
         onCaptureClipboard={captureClipboardText}
         onToggleMonitor={toggleMonitor}
       />

@@ -1,7 +1,8 @@
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_global_shortcut::{Code, Modifiers, ShortcutState};
 
 const QUICK_ACCESS_SHORTCUT: &str = "ctrl+shift+space";
+const QUICK_ACCESS_OPENED_EVENT: &str = "quick-access-opened";
 
 pub fn register(app: &AppHandle) {
     let plugin = match tauri_plugin_global_shortcut::Builder::new()
@@ -32,6 +33,7 @@ fn focus_main_window(app: &AppHandle) -> tauri::Result<()> {
         window.show()?;
         window.unminimize()?;
         window.set_focus()?;
+        window.emit(QUICK_ACCESS_OPENED_EVENT, ())?;
     }
 
     Ok(())

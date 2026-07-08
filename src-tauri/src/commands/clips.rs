@@ -56,3 +56,8 @@ pub fn delete_clip(app: tauri::AppHandle, id: u32) -> Result<(), String> {
 pub fn toggle_clip_pinned(app: tauri::AppHandle, id: u32) -> Result<Clip, String> {
     crate::db::clips::toggle_clip_pinned(&app, id)
 }
+
+#[tauri::command]
+pub fn copy_clip_to_clipboard(app: tauri::AppHandle, id: u32) -> Result<Clip, String> {
+    crate::db::clips::copy_clip_to_clipboard(&app, id)
+}

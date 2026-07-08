@@ -17,6 +17,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::clips::capture_clipboard_text,
+            commands::clips::copy_clip_to_clipboard,
             commands::clips::create_clip,
             commands::clips::delete_clip,
             commands::clips::list_clips,

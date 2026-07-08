@@ -25,6 +25,15 @@ pub fn search_clips(
     query_searched_clips(&conn, query, folder_id, kind)
 }
 
+pub fn copy_clip_to_clipboard(app: &AppHandle, id: u32) -> DbResult<Clip> {
+    let conn = open_ready_connection(app)?;
+    let clip = query_clip_by_id(&conn, id)?;
+
+    crate::clipboard::write_text(&clip.content)?;
+    touch_clip(&conn, id)?;
+    query_clip_by_id(&conn, id)
+}
+
 pub fn create_clip(app: &AppHandle, payload: CreateClipPayload) -> DbResult<Clip> {
     let conn = open_ready_connection(app)?;
     let title = payload.title.trim();
