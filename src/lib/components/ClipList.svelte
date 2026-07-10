@@ -9,12 +9,24 @@
   };
 
   let { clips, selectedClipId, onChooseClip }: Props = $props();
+  let clipListElement: HTMLDivElement;
+
+  $effect(() => {
+    if (!selectedClipId) return;
+
+    clipListElement
+      ?.querySelector(`[data-clip-id="${selectedClipId}"]`)
+      ?.scrollIntoView({
+      block: "nearest",
+    });
+  });
 </script>
 
-<div class="clip-list" aria-label="Clip list">
+<div bind:this={clipListElement} class="clip-list" aria-label="Clip list">
   {#each clips as clip}
     <button
       class:active={clip.id === selectedClipId}
+      data-clip-id={clip.id}
       type="button"
       class="clip-row"
       onclick={() => onChooseClip(clip.id)}

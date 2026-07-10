@@ -57,7 +57,7 @@ Add configurable shortcut
 - 复制成功后提供轻量状态反馈。
 - 写回系统剪贴板时记录最近写回的 hash。
 - 监听循环识别最近写回内容，跳过多余 capture。
-- 评估 Enter 后是否默认隐藏窗口。
+- 评估是否增加 direct paste 模式。
 
 建议提交信息：
 
@@ -247,8 +247,10 @@ Completed at: 2026-07-07 17:19:54 +08:00
 - 前端监听 `quick-access-opened`，自动聚焦并选中搜索框内容。
 - 保留当前搜索输入框，继续触发现有 backend/FTS search。
 - 支持 `ArrowDown` / `ArrowUp` 在当前结果中移动 selected clip。
+- `ArrowDown` / `ArrowUp` 移动 selected clip 时，列表滚动跟随当前选中项。
 - 支持 `Enter` 将当前 selected clip 写回系统剪贴板。
 - 写回时更新 clip 的 `last_used_at`。
+- 写回成功后隐藏窗口，让 quick panel 更接近 Ditto/PasteNow 的选择手感。
 - 支持 `Escape`：有搜索内容时清空搜索；无搜索内容时隐藏窗口。
 - 键盘事件只接管 quick panel 场景，不干扰新增 clip 表单里的正常输入。
 
@@ -259,7 +261,7 @@ cargo check
 pnpm check
 ```
 
-备注：这一版 Enter 写回后保持窗口打开，方便连续搜索和复制；是否复制后自动隐藏，留给后续试用后再决定。
+备注：这一版 Enter 写回后只隐藏窗口，不做 direct paste；Dock、Mission Control、系统托盘和 skip taskbar 行为放到后台模式里处理。
 
 Completed at: 2026-07-08 11:39:24 +08:00
 

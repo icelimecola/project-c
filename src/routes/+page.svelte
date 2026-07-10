@@ -224,7 +224,7 @@
     try {
       const updatedClip = await invoke<Clip>("copy_clip_to_clipboard", { id: selectedClip.id });
       await loadData(updatedClip.id);
-      focusSearch();
+      await hideWindow();
     } catch (error) {
       actionError = error instanceof Error ? error.message : String(error);
     } finally {
